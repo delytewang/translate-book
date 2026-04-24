@@ -117,10 +117,10 @@ python3 {baseDir}/scripts/glossary.py print-terms-for-chunk "<temp_dir>" "chunk<
 Capture stdout. The CLI emits a 3-column markdown table (`原文 | 别名 | 译文`) of every term that either appears in this chunk (by source OR any alias) OR is in the top-N most-frequent terms book-wide. Inject the table as `{TERM_TABLE}` in rule #13 of the translation prompt. **If stdout is empty (no glossary, or no relevant terms), omit rule #13 from this chunk's prompt entirely** — do not leave a dangling `{TERM_TABLE}` placeholder.
 
 **Each sub-agent's task**:
-1. Read the source chunk file (e.g. `chunk0001.md`)
+1. Read the source chunk file (`<temp_dir>/chunk<NNNN>.md`)
 2. Translate the content following the translation rules below
-3. Write the translated content to `output_chunk0001.md`
-4. Write observations to `output_chunk0001.meta.json` matching the schema below. **Non-blocking** — leave fields empty if unsure; do not invent entities. Always emit the file (even if all arrays are empty), because its presence + content hash is how the main agent tracks whether feedback was already merged.
+3. Write the translated content to `<temp_dir>/output_chunk<NNNN>.md`
+4. Write observations to `<temp_dir>/output_chunk<NNNN>.meta.json` matching the schema below. **Non-blocking** — leave fields empty if unsure; do not invent entities. Always emit the file (even if all arrays are empty), because its presence + content hash is how the main agent tracks whether feedback was already merged.
 
 **Sub-agent meta schema** (`output_chunk<NNNN>.meta.json`):
 
@@ -198,6 +198,8 @@ IMPORTANT REQUIREMENTS:
 13. 术语一致性：以下术语必须严格使用指定译法，不要自行变换。表格中"原文"列**或"别名"列**任一形式出现在正文中时，都必须翻译为"译文"列对应的形式。
 
 {TERM_TABLE}
+
+**重要：翻译完成后，必须将观察记录写入 `<temp_dir>/output_chunk<NNNN>.meta.json` 文件（schema 见上方任务描述第 4 步）。即使所有数组为空也必须写入，否则主代理无法追踪反馈合并状态。**
 
 markdown文件正文:
 
