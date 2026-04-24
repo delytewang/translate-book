@@ -15,6 +15,7 @@ import bisect
 import glob
 import re
 
+from html_cleanup import sanitize_html_file
 from manifest import create_manifest
 
 
@@ -180,12 +181,22 @@ def convert_html_to_markdown(html_file, md_file, strip_page_numbers=False):
     try:
         import pypandoc
 
+        with tempfile.NamedTemporaryFile('w', suffix='.html', delete=False, encoding='utf-8') as tmp_html:
+            normalized_html_file = tmp_html.name
+
+        sanitize_html_file(html_file, normalized_html_file)
+
         pypandoc.convert_file(
-            html_file,
+            normalized_html_file,
             'markdown',
             outputfile=md_file,
             extra_args=['--wrap=none']
         )
+
+        try:
+            os.unlink(normalized_html_file)
+        except OSError:
+            pass
 
         if os.path.exists(md_file):
             with open(md_file, 'r', encoding='utf-8') as f:

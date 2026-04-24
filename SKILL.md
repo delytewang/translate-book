@@ -52,9 +52,11 @@ If all chunks already have translations, skip to step 5.
 
 A separate sub-agent translates each chunk with a fresh context. Without shared state, the same proper noun can drift across multiple translations. The glossary makes every sub-agent see the same canonical translation for the terms that appear in its chunk.
 
-If `<temp_dir>/glossary.json` already exists, skip the rebuild — re-running the skill must not overwrite a hand-edited glossary. To force a rebuild, delete the file.
+If `<temp_dir>/glossary.json` already exists, preserve it and do not rebuild it automatically. To force a rebuild, delete the file first.
 
-Otherwise:
+If it does not exist, the main agent must create an initial glossary before any chunk translation begins.
+
+Do not skip Step 3.5 and proceed to Step 4 without a `glossary.json`.
 
 1. **Sample chunks**: read `chunk0001.md`, the last chunk, and 3 evenly-spaced middle chunks. If `chunk_count < 5`, sample all of them.
 2. **Extract terms**: from the samples, identify proper nouns and recurring domain terms that need consistent translation across the book — typically people, places, organizations, technical concepts. Translate each into the target language. Skip generic vocabulary that any translator would render the same way.
