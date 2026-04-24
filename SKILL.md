@@ -60,7 +60,34 @@ Do not skip Step 3.5 and proceed to Step 4 without a `glossary.json`.
 
 1. **Sample chunks**: read `chunk0001.md`, the last chunk, and 3 evenly-spaced middle chunks. If `chunk_count < 5`, sample all of them.
 2. **Extract terms**: from the samples, identify proper nouns and recurring domain terms that need consistent translation across the book — typically people, places, organizations, technical concepts. Translate each into the target language. Skip generic vocabulary that any translator would render the same way.
-3. **Write `glossary.json`** in the temp dir, matching this v2 schema:
+3. **Write `glossary_candidates.json`** in the temp dir. The main agent must not hand-author the final `glossary.json`. Candidates use this lighter schema:
+
+   ```json
+   {
+     "terms": [
+       {
+         "source": "Manhattan",
+         "target": "曼哈顿",
+         "category": "place",
+         "aliases": [],
+         "notes": ""
+       }
+     ],
+     "high_frequency_top_n": 20
+   }
+   ```
+
+   Allowed simplifications for candidates:
+   - `aliases` may be omitted or be a single string; the builder normalizes it to a list.
+   - Legacy field names `term` / `translation` are accepted in the candidate file only.
+
+4. **Build the canonical `glossary.json`** by running:
+
+   ```bash
+   python3 {baseDir}/scripts/build_glossary.py "<temp_dir>" "<temp_dir>/glossary_candidates.json"
+   ```
+
+   This is the only supported way to create a new glossary. The builder writes the real v2 schema:
 
    ```json
    {
@@ -78,7 +105,15 @@ Do not skip Step 3.5 and proceed to Step 4 without a `glossary.json`.
 
    Existing v1 `glossary.json` files are auto-upgraded to v2 on first load. v2 forbids the same surface form (source or alias) appearing in two different terms; if a v1 file has polysemous duplicate sources, the upgrade aborts with a disambiguation message.
 
-4. **Count frequencies** by running:
+5. **Validate the glossary** before any downstream command:
+
+   ```bash
+   python3 {baseDir}/scripts/glossary.py validate "<temp_dir>"
+   ```
+
+   Do not continue if validation fails. Fix or rebuild `glossary_candidates.json`, rerun `build_glossary.py`, then validate again.
+
+6. **Count frequencies** by running:
 
    ```bash
    python3 {baseDir}/scripts/glossary.py count-frequencies "<temp_dir>"
@@ -86,7 +121,14 @@ Do not skip Step 3.5 and proceed to Step 4 without a `glossary.json`.
 
    This scans every `chunk*.md` (excluding `output_chunk*.md`), updates each term's `frequency` field, and writes back atomically.
 
+7. **Validate again after frequency counting**:
+
+   ```bash
+   python3 {baseDir}/scripts/glossary.py validate "<temp_dir>"
+   ```
+
 The glossary is hand-editable. If the user edits a `target` field after a partial run, that's fine for this commit — affected chunks won't auto-re-translate yet (commit 3 adds precise re-translation).
+If the user edits it, re-run `glossary.py validate` before Step 4, and re-run `count-frequencies` if sources or aliases changed.
 
 ### 4. Parallel Translation with Sub-Agents
 
@@ -151,6 +193,8 @@ Capture stdout. The CLI emits a 3-column markdown table (`原文 | 别名 | 译�
 
 **Do NOT include a `chunk_id` field** — chunk identity is derived from the filename. Putting it in the payload creates a hallucination hole and validation will reject the file.
 
+**Do NOT add any extra top-level fields.** In particular, fields such as `translation_status`, `source_file`, `output_file`, `translation_date`, `total_lines`, or any other ad-hoc summary keys are forbidden. If there are no observations, emit the required schema with empty arrays only.
+
 The meta file is read by the main agent later and merged into `glossary.json` (see `merge_meta.py`). Sub-agents should fill the schema honestly: cite real quotes from the chunk, never invent entities to "look productive". An empty meta is a perfectly valid output.
 
 **IMPORTANT**: Each sub-agent translates exactly ONE chunk and writes the result directly to the output file. No START/END markers needed.
@@ -202,6 +246,7 @@ IMPORTANT REQUIREMENTS:
 {TERM_TABLE}
 
 **重要：翻译完成后，必须将观察记录写入 `<temp_dir>/output_chunk<NNNN>.meta.json` 文件（schema 见上方任务描述第 4 步）。即使所有数组为空也必须写入，否则主代理无法追踪反馈合并状态。**
+**重要：meta 文件必须严格匹配上述 schema，且必须包含 `schema_version: 1`。不要输出任何 schema 外字段。**
 
 markdown文件正文:
 
@@ -216,6 +261,8 @@ Each sub-agent emitted an `output_chunk<NNNN>.meta.json` alongside its translate
    ```bash
    python3 {baseDir}/scripts/merge_meta.py prepare-merge "<temp_dir>"
    ```
+
+   Use the absolute temp directory path only. Do not `cd` into the temp dir and pass `"."`. Do not use relative paths such as `"."`, `"./"`, or `"../..."` for `prepare-merge`, `apply-merge`, or `status`.
 
    Capture stdout JSON. It contains four arrays:
    - `auto_apply` — new entities with no glossary collision and unanimous (target, category) across all proposing chunks.
@@ -248,6 +295,8 @@ Each sub-agent emitted an `output_chunk<NNNN>.meta.json` alongside its translate
    echo '{"auto_apply": [...], "decisions": [...], "consumed_chunk_ids": [...]}' \
      | python3 {baseDir}/scripts/merge_meta.py apply-merge "<temp_dir>"
    ```
+
+   Again, `<temp_dir>` must be the absolute temp directory path.
 
    Surface the summary JSON (`auto_applied`, `decisions_resolved`, `consumed_chunks`, `errors`) in your batch progress message.
 
